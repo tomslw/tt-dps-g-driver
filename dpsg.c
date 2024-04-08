@@ -2,6 +2,10 @@
 #include <linux/module.h>
 #include <linux/usb.h>
 
+#include <linux/hid.h> // seems dreadfully out of place
+#include <linux/hwmon.h>
+#include <linux/hwmon-sysfs.h>
+
 // Based off of
 // https://www.youtube.com/watch?v=juGNPLdjLH4
 // https://www.youtube.com/watch?v=5IDL070RtoQ
@@ -12,6 +16,16 @@
 // used on device insertion if no other driver has been called first
 static int dpsg_probe(struct usb_interface *interface, const struct usb_device_id *id)
 {
+        struct usb_device *udev = interface_to_usbdev(interface);
+        struct device *dev = &interface->dev;
+        struct hid_device *hid_dev = to_hid_device(dev);
+        // wouldnt this require for the device to be allready driven
+        // under another driver?
+        if (!hid_dev) {
+                dev_err(dev, "Not a HID device\n");
+                return -ENODEV;
+        }
+
         // TODO: Send request to psu to get the model number
         printk(KERN_INFO "[*] Thermaltake DPS G PSU (%04X:%04X) plugged\n", id->idVendor, id->idProduct);
         return 0; // returning 0 indicates that this driver will manage this device
