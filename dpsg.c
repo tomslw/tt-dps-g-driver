@@ -25,7 +25,7 @@ static void dpsg_disconnect(struct usb_interface *interface)
 
 static struct usb_device_id dpsg_table[] = {
                 // vendor id, product id
-        {USB_DEVICE(0xffff, 0xffff)} // usb id information goes here
+        {USB_DEVICE(0xffff, 0xffff)}, // usb id information goes here
         // {USB_DEVICE(v, p)}, // if supporting more than one device
         {} /* Terminating entry */
 };
@@ -33,20 +33,21 @@ MODULE_DEVICE_TABLE (usb, dpsg_table); // what does this do?
 
 static struct usb_driver dpsg_driver = 
 {
-        .name = "Thermaltake DPS G Driver"
+        .name = "Thermaltake DPS G Driver",
         .id_table = dpsg_table, // this is how the kernel knows which driver to call to handle a device
         // more stuff? idk, there was more stuff for a pen drive, but this aint one
         .probe = dpsg_probe, // would be called when device gets attached
         .disconnect = dpsg_disconnect, // how nessesary are these?
-}
+};
 
 
 
 static int __init dpsg_init(void)
 {
+        int ret = -1;
         printk(KERN_ALERT "[*] Thermaltake DPS G Constructor of driver\n");
         printk(KERN_ALERT "\tRegistering Driver with Kernel");
-        ret = usb_register(&dpsg_driver)
+        ret = usb_register(&dpsg_driver);
         printk(KERN_ALERT "\tRegistration is complete");
 
         return ret;
