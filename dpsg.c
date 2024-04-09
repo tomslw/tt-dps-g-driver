@@ -1,83 +1,46 @@
 #include <linux/init.h>
 #include <linux/module.h>
-#include <linux/usb.h>
+#include <linux/hid.h>
 
-#include <linux/hid.h> // seems dreadfully out of place
-#include <linux/hwmon.h>
-#include <linux/hwmon-sysfs.h>
+// #include <linux/hwmon.h>
+// #include <linux/hwmon-sysfs.h>
 
-// Based off of
-// https://www.youtube.com/watch?v=juGNPLdjLH4
-// https://www.youtube.com/watch?v=5IDL070RtoQ
-// 
-
-
-// probe function
-// used on device insertion if no other driver has been called first
-static int dpsg_probe(struct usb_interface *interface, const struct usb_device_id *id)
+static int dpsg_probe(struct hid_device *device, const struct hid_device_id *id)
 {
-        struct usb_device *udev = interface_to_usbdev(interface);
-        struct device *dev = &interface->dev;
-        struct hid_device *hid_dev = to_hid_device(dev);
-        // wouldnt this require for the device to be allready driven
-        // under another driver?
-        if (!hid_dev) {
-                dev_err(dev, "Not a HID device\n");
-                return -ENODEV;
-        }
+
+        // add the sysfs files here
+        // all the sensor readings
+        // maybe also the fan speed controller
+        // potentially the rgb light controller
 
         // TODO: Send request to psu to get the model number
-        printk(KERN_INFO "[*] Thermaltake DPS G PSU (%04X:%04X) plugged\n", id->idVendor, id->idProduct);
+        printk(KERN_INFO "[*] Thermaltake DPS G PSU (%04X:%04X) plugged\n", id->vendor, id->product);
         return 0; // returning 0 indicates that this driver will manage this device
 }
 
-// disconnect
-static void dpsg_disconnect(struct usb_interface *interface) 
+static void dpsg_remove(struct hid_device *device) 
 {                               // prolly need to rephrase this
         printk(KERN_INFO "[*] Thermaltake DPS G PSU removed\n");
+
+        // remove the sysfs files here
 }
 
-static struct usb_device_id dpsg_table[] = {
-                // vendor id, product id
-        {USB_DEVICE(0xffff, 0xffff)}, // usb id information goes here
-        // {USB_DEVICE(v, p)}, // if supporting more than one device
+static struct hid_device_id dpsg_table[] = {
+                                        // vendor id, product id
+        { HID_DEVICE(HID_BUS_ANY, HID_GROUP_ANY, 0x264a, 0x2329) },
         {} /* Terminating entry */
 };
-MODULE_DEVICE_TABLE (usb, dpsg_table); // what does this do?
+MODULE_DEVICE_TABLE (hid, dpsg_table); // what does this do?
 
-static struct usb_driver dpsg_driver = 
+static struct hid_driver dpsg_driver = 
 {
         .name = "Thermaltake DPS G Driver",
-        .id_table = dpsg_table, // this is how the kernel knows which driver to call to handle a device
-        // more stuff? idk, there was more stuff for a pen drive, but this aint one
-        .probe = dpsg_probe, // would be called when device gets attached
-        .disconnect = dpsg_disconnect, // how nessesary are these?
+        .id_table = dpsg_table,
+        .probe = dpsg_probe,    // called to create the sysfs files
+        .remove = dpsg_remove,  // called to remove the sysfs files (if nessesary idk yet)
 };
 
-
-
-static int __init dpsg_init(void)
-{
-        int ret = -1;
-        printk(KERN_ALERT "[*] Thermaltake DPS G Constructor of driver\n");
-        printk(KERN_ALERT "\tRegistering Driver with Kernel");
-        ret = usb_register(&dpsg_driver);
-        printk(KERN_ALERT "\tRegistration is complete");
-
-        return ret;
-}
-
-
-        // find out why __thing is nessesary
-static void __exit dpsg_exit(void)
-{
-        printk(KERN_ALERT "[*] Thermaltake DPS G Destructor of driver\n");
-        usb_deregister(&dpsg_driver);
-        printk(KERN_ALERT "Unregistration complete\n");
-}
-
-module_init(dpsg_init);
-module_exit(dpsg_exit);
+module_hid_driver(dpsg_driver);
 
 MODULE_LICENSE("Dual BSD/GPL"); // hmm gotta ask janis about this
 MODULE_AUTHOR("Toms Štrāls");   // hmm special characters
