@@ -126,14 +126,14 @@ static void tt_dpsg_remove(struct hid_device *hdev)
 
 static struct hid_device_id tt_dpsg_table[] = {
                                         // vendor id, product id
-        { HID_DEVICE(HID_BUS_ANY, HID_GROUP_ANY, 0x264a, 0x2329) },
+        { HID_USB_DEVICE(0x264a, 0x2329) },
         {} /* Terminating entry */
 };
 MODULE_DEVICE_TABLE (hid, tt_dpsg_table); // what does this do?
 
 static struct hid_driver tt_dpsg_driver = 
 {
-        .name = "Thermaltake DPS G Driver",
+        .name = "hid-tt-dps-g",
         .id_table = tt_dpsg_table,
         .probe = tt_dpsg_probe,    // called to create the sysfs files
         .remove = tt_dpsg_remove,  // called to remove the sysfs files (if nessesary idk yet)
