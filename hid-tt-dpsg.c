@@ -5,7 +5,7 @@
 // #include <linux/hwmon.h>
 // #include <linux/hwmon-sysfs.h>
 
-static int dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id)
+static int tt_dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id)
 {
 
         // add the sysfs files here
@@ -18,29 +18,29 @@ static int dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id)
         return 0; // returning 0 indicates that this driver will manage this device
 }
 
-static void dpsg_remove(struct hid_device *hdev) 
+static void tt_dpsg_remove(struct hid_device *hdev) 
 {                               // prolly need to rephrase this
         printk(KERN_INFO "[*] Thermaltake DPS G PSU removed\n");
 
         // remove the sysfs files here
 }
 
-static struct hid_device_id dpsg_table[] = {
+static struct hid_device_id tt_dpsg_table[] = {
                                         // vendor id, product id
         { HID_DEVICE(HID_BUS_ANY, HID_GROUP_ANY, 0x264a, 0x2329) },
         {} /* Terminating entry */
 };
-MODULE_DEVICE_TABLE (hid, dpsg_table); // what does this do?
+MODULE_DEVICE_TABLE (hid, tt_dpsg_table); // what does this do?
 
-static struct hid_driver dpsg_driver = 
+static struct hid_driver tt_dpsg_driver = 
 {
         .name = "Thermaltake DPS G Driver",
-        .id_table = dpsg_table,
-        .probe = dpsg_probe,    // called to create the sysfs files
-        .remove = dpsg_remove,  // called to remove the sysfs files (if nessesary idk yet)
+        .id_table = tt_dpsg_table,
+        .probe = tt_dpsg_probe,    // called to create the sysfs files
+        .remove = tt_dpsg_remove,  // called to remove the sysfs files (if nessesary idk yet)
 };
 
-module_hid_driver(dpsg_driver);
+module_hid_driver(tt_dpsg_driver);
 
 MODULE_LICENSE("Dual BSD/GPL"); // hmm gotta ask janis about this
 MODULE_AUTHOR("Toms Štrāls");   // hmm special characters
