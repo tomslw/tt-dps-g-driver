@@ -5,7 +5,7 @@
 // #include <linux/hwmon.h>
 // #include <linux/hwmon-sysfs.h>
 
-static int dpsg_probe(struct hid_device *device, const struct hid_device_id *id)
+static int dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id)
 {
 
         // add the sysfs files here
@@ -18,7 +18,7 @@ static int dpsg_probe(struct hid_device *device, const struct hid_device_id *id)
         return 0; // returning 0 indicates that this driver will manage this device
 }
 
-static void dpsg_remove(struct hid_device *device) 
+static void dpsg_remove(struct hid_device *hdev) 
 {                               // prolly need to rephrase this
         printk(KERN_INFO "[*] Thermaltake DPS G PSU removed\n");
 
