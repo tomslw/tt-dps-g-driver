@@ -29,7 +29,7 @@ clean:
 
 else
     # called from kernel build system: just declare what our modules are
-    obj-m := dpsg.o
+    obj-m := hid-tt-dps-g.o
 endif
 
 
