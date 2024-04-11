@@ -2,6 +2,12 @@
 #include <linux/hid.h>
 #include <linux/hidraw.h>
 #include <linux/mutex.h>
+#include <linux/usb.h>
+
+#include "usbhid/usbhid.h"      // will this actually work?
+                                // No way, i prolly need to compile the entire
+                                // kernel :D
+                                // FOR THE KERNEL!!!!!!!!!!!
 
 // #include <linux/hwmon.h>
 // #include <linux/hwmon-sysfs.h>
@@ -49,24 +55,14 @@ static int tt_dpsg_recv(struct tt_dpsg_device *ldev, __u8 *buf)
 
         memcpy(ldev->buf, buf, MAX_REPORT_SIZE);
 
-        ret = hid_hw_raw_request(ldev->hdev, buf[0], ldev->buf,
-                                MAX_REPORT_SIZE,
-                                HID_FEATURE_REPORT,
-                                HID_REQ_SET_REPORT);
+        ret = hid_hw_output_report(ldev->hdev, ldev->buf, MAX_REPORT_SIZE);
         
         if (ret < 0) {
                 printk(KERN_INFO "[*] Error gotten after SET_REPORT: %d", ret);
-                goto err;
-
+        } else {
+                memcpy(buf, ldev->buf, MAX_REPORT_SIZE);    
         }
-
-        ret = hid_hw_raw_request(ldev->hdev, buf[0], ldev->buf,
-                                MAX_REPORT_SIZE,
-                                HID_FEATURE_REPORT,
-                                HID_REQ_GET_REPORT);
-
-        memcpy(buf, ldev->buf, MAX_REPORT_SIZE);
-err:
+        
         mutex_unlock(&ldev->lock);
 
         return ret < 0 ? ret : 0;
@@ -98,6 +94,17 @@ static int tt_dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id
         if (ret)                                      // if so do i still need lock?         
 		return ret;
 
+        // ======= way too low level zone bad boys only =======
+        struct usb_device *dev = hid_to_usb_dev(hdev);
+        usb_driver_set_configuration(dev, 1);   // this function isn't beeing used in 
+                                                // usb-hid.c
+
+        // could call the sleep func here aswell
+
+        // then in wire shark theres a random empty URB_INTERRUPT
+
+        // =======
+
         // add the sysfs files here
         // all the sensor readings
         // maybe also the fan speed controller
@@ -120,7 +127,7 @@ static int tt_dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id
 static void tt_dpsg_remove(struct hid_device *hdev) 
 {                               // prolly need to rephrase this
         printk(KERN_INFO "[*] Thermaltake DPS G PSU removed\n");
-
+        // run a "stop" ll_driver func indirectly here
         // remove the sysfs files here
 }
 
