@@ -4,11 +4,6 @@
 #include <linux/mutex.h>
 #include <linux/usb.h>
 
-#include "usbhid/usbhid.h"      // will this actually work?
-                                // No way, i prolly need to compile the entire
-                                // kernel :D
-                                // FOR THE KERNEL!!!!!!!!!!!
-
 // #include <linux/hwmon.h>
 // #include <linux/hwmon-sysfs.h>
 
@@ -94,8 +89,10 @@ static int tt_dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id
         if (ret)                                      // if so do i still need lock?         
 		return ret;
 
-        // ======= way too low level zone bad boys only =======
-        struct usb_device *dev = hid_to_usb_dev(hdev);
+        // ======= way too low level zone! bad boys only =======
+        // taken from a makro from usbhid/usbhid.h (cant import, maybe i can but cmon)
+        struct usb_device *dev = to_usb_device(hdev->dev.parent->parent);
+        
         usb_driver_set_configuration(dev, 1);   // this function isn't beeing used in 
                                                 // usb-hid.c
 
