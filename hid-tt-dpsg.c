@@ -14,7 +14,7 @@ struct tt_dpsg_device {
 	struct mutex		lock;
 };
 
-#define MAX_REPORT_SIZE		32      // ? hmm 64?
+#define MAX_REPORT_SIZE		64      // ? hmm 64?
 
 static int tt_dpsg_send(struct tt_dpsg_device *ldev, __u8 *buf) 
 {
@@ -49,15 +49,14 @@ static int tt_dpsg_recv(struct tt_dpsg_device *ldev, __u8 *buf)
 
         memcpy(ldev->buf, buf, MAX_REPORT_SIZE);
 
-        ret = hid_hw_raw_request(ldev->hdev, buf[0], ldev->buf,
-                                MAX_REPORT_SIZE,
-                                HID_FEATURE_REPORT,
-                                HID_REQ_SET_REPORT);
+        printk(KERN_INFO "[*] Sending thing");
+        ret = hid_report_raw_event(ldev->hdev, HID_INPUT_REPORT, buf, MAX_REPORT_SIZE, 1);
+
+        ret = hid_hw_output_report(ldev->hdev, buf, MAX_REPORT_SIZE);
         
         if (ret < 0) {
                 printk(KERN_INFO "[*] Error gotten after SET_REPORT: %d", ret);
                 goto err;
-
         }
 
         ret = hid_hw_raw_request(ldev->hdev, buf[0], ldev->buf,
@@ -96,7 +95,10 @@ static int tt_dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id
 
         ret = hid_hw_start(hdev, HID_CONNECT_HIDRAW); // could i use hiddev
         if (ret)                                      // if so do i still need lock?         
-		return ret;
+		return
+
+
+        // hdev->ll_driver->idle(hdev)
 
         // add the sysfs files here
         // all the sensor readings
@@ -105,7 +107,7 @@ static int tt_dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id
 
         printk(KERN_INFO "[*] Attempting to fetch model number");
 
-        __u8 buf[MAX_REPORT_SIZE] = { 0x31, 0xfe };
+        __u8 buf[MAX_REPORT_SIZE] = { 0xfe, 0x31 };
 
         ret = tt_dpsg_recv(ldev, buf);
         if (ret)
@@ -113,7 +115,7 @@ static int tt_dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id
 
 
         //hid_info(hdev, "%s initialized\n", <the the model number>);
-        printk(KERN_INFO "[*] Thermaltake %.*s (%04X:%04X) plugged\n", MAX_REPORT_SIZE, buf, id->vendor, id->product);
+        printk(KERN_INFO "[*] Thermaltake %.*s (%04X:%04X) p32&$lugged\n", MAX_REPORT_SIZE, buf, id->vendor, id->product);
         return 0;
 }
 
@@ -133,7 +135,7 @@ MODULE_DEVICE_TABLE (hid, tt_dpsg_table); // what does this do?
 
 static struct hid_driver tt_dpsg_driver = 
 {
-        .name = "hid-tt-dps-g",
+        .name = "hid-tt-dpsg",
         .id_table = tt_dpsg_table,
         .probe = tt_dpsg_probe,    // called to create the sysfs files
         .remove = tt_dpsg_remove,  // called to remove the sysfs files (if nessesary idk yet)
