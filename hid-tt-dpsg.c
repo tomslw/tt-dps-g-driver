@@ -3,6 +3,9 @@
 #include <linux/hidraw.h>
 #include <linux/mutex.h>
 #include <linux/usb.h>
+#include <linux/delay.h>
+
+#include "usbhid/usbhid.h"
 
 // #include <linux/hwmon.h>
 // #include <linux/hwmon-sysfs.h>
@@ -18,31 +21,6 @@ struct tt_dpsg_device {
 #define MAX_REPORT_SIZE		32      // ? hmm 64?
 
 static int tt_dpsg_send(struct tt_dpsg_device *ldev, __u8 *buf) 
-{
-        int ret;
-
-        mutex_lock(&ldev->lock);
-
-        /*
-	 * buffer provided to hid_hw_raw_request must not be on the stack
-	 * and must not be part of a data structure
-	 */
-        memcpy(ldev->buf, buf, MAX_REPORT_SIZE);
-
-        ret = hid_hw_raw_request(ldev->hdev, buf[0], ldev->buf,
-                                MAX_REPORT_SIZE,
-                                HID_FEATURE_REPORT,
-                                HID_REQ_SET_REPORT);
-
-        mutex_unlock(&ldev->lock);
-
-        if (ret < 0)
-                return ret;
-
-        return ret; // in the example: ret == ldev->config->report_size ? 0 : -EMSGSIZE;
-}
-
-static int tt_dpsg_recv(struct tt_dpsg_device *ldev, __u8 *buf) 
 {
         int ret;
 
@@ -93,8 +71,25 @@ static int tt_dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id
         // taken from a makro from usbhid/usbhid.h (cant import, maybe i can but cmon)
         struct usb_device *dev = to_usb_device(hdev->dev.parent->parent);
         
-        usb_driver_set_configuration(dev, 1);   // this function isn't beeing used in 
+        ret = usb_driver_set_configuration(dev, 1);   // this function isn't beeing used in 
                                                 // usb-hid.c
+        if (ret)
+                return ret;
+        
+        mdelay(1000);   // this doesn't even help wtf
+                        // does it get compiled in a differant order?
+        // sends an empty interrupt request
+        // no clue why its needed, but it seems to start boot looping without it
+        struct usbhid_device *usbhid = hdev->driver_data;
+        
+        // for some reason this gets sent after the previous request
+        // but why tho hmm
+        int bytes_transfered;
+        ret = usb_interrupt_msg(dev, usbhid->urbout->pipe,
+				NULL, 0, &bytes_transfered,
+				0);
+        if (ret)                        
+                return ret;
 
         // could call the sleep func here aswell
 
@@ -107,17 +102,25 @@ static int tt_dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id
         // maybe also the fan speed controller
         // potentially the rgb light controller
 
-        printk(KERN_INFO "[*] Attempting to fetch model number");
+        // printk(KERN_INFO "[*] Attempting to fetch model number");
 
-        __u8 buf[MAX_REPORT_SIZE] = { 0x31, 0xfe };
+        // __u8 buf[MAX_REPORT_SIZE] = { 0x31, 0xfe };
 
-        ret = tt_dpsg_recv(ldev, buf);
-        if (ret)
-                return ret;
+        // ret = tt_dpsg_recv(ldev, buf);
+        // if (ret)
+        //         return ret;
 
 
         //hid_info(hdev, "%s initialized\n", <the the model number>);
-        printk(KERN_INFO "[*] Thermaltake %.*s (%04X:%04X) plugged\n", MAX_REPORT_SIZE, buf, id->vendor, id->product);
+        printk(KERN_INFO "[*] Thermaltake (%04X:%04X) plugged\n", id->vendor, id->product);
+        // printk(KERN_INFO "[*] Thermaltake %.*s (%04X:%04X) plugged\n", MAX_REPORT_SIZE, buf, id->vendor, id->product);
+        return 0;
+}
+
+static int tt_dpsg_raw_event(struct hid_device *hid, struct hid_report *report,
+	 u8 *data, int size)
+{
+        printk(KERN_INFO "[*] tt_dpsg Raw event, report id: %d\n", report->id);
         return 0;
 }
 
@@ -141,6 +144,7 @@ static struct hid_driver tt_dpsg_driver =
         .id_table = tt_dpsg_table,
         .probe = tt_dpsg_probe,    // called to create the sysfs files
         .remove = tt_dpsg_remove,  // called to remove the sysfs files (if nessesary idk yet)
+        .raw_event = tt_dpsg_raw_event,
 };
 
 module_hid_driver(tt_dpsg_driver);
