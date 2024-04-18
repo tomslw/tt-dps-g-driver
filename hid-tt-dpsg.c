@@ -76,14 +76,13 @@ static int tt_dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id
         if (ret)
                 return ret;
         
-        mdelay(1000);   // this doesn't even help wtf
-                        // does it get compiled in a differant order?
         // sends an empty interrupt request
         // no clue why its needed, but it seems to start boot looping without it
         struct usbhid_device *usbhid = hdev->driver_data;
         
         // for some reason this gets sent after the previous request
-        // but why tho hmm
+        // but why tho hmm, its because the usb requests get sent after
+        // this function finishes.
         int bytes_transfered;
         ret = usb_interrupt_msg(dev, usbhid->urbout->pipe,
 				NULL, 0, &bytes_transfered,
