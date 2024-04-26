@@ -30,7 +30,7 @@ static int tt_dpsg_send(struct tt_dpsg_device *ldev, __u8 *buf)
 
         ret = hid_hw_raw_request(ldev->hdev, buf[0], ldev->buf,
                                 MAX_REPORT_SIZE,
-                                HID_FEATURE_REPORT,
+                                HID_OUTPUT_REPORT,
                                 HID_REQ_SET_REPORT);
 
         mutex_unlock(&ldev->lock);
@@ -39,37 +39,6 @@ static int tt_dpsg_send(struct tt_dpsg_device *ldev, __u8 *buf)
                 return ret;
 
         return ret; // in the example: ret == ldev->config->report_size ? 0 : -EMSGSIZE;
-}
-
-static int tt_dpsg_recv(struct tt_dpsg_device *ldev, __u8 *buf) 
-{
-        int ret;
-
-        mutex_lock(&ldev->lock);
-
-        memcpy(ldev->buf, buf, MAX_REPORT_SIZE);
-
-        printk(KERN_INFO "[*] Sending thing");
-        ret = hid_report_raw_event(ldev->hdev, HID_INPUT_REPORT, buf, MAX_REPORT_SIZE, 1);
-
-        ret = hid_hw_output_report(ldev->hdev, buf, MAX_REPORT_SIZE);
-        
-        if (ret < 0) {
-                printk(KERN_INFO "[*] Error gotten after SET_REPORT: %d", ret);
-                goto err;
-        }
-
-        ret = hid_hw_raw_request(ldev->hdev, buf[0], ldev->buf,
-                                MAX_REPORT_SIZE,
-                                HID_FEATURE_REPORT,
-                                HID_REQ_GET_REPORT);
-
-        memcpy(buf, ldev->buf, MAX_REPORT_SIZE);
-err:
-        mutex_unlock(&ldev->lock);
-
-        return ret < 0 ? ret : 0;
-        
 }
 
 static int tt_dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id)
@@ -98,20 +67,22 @@ static int tt_dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id
 		return
 
 
-        // hdev->ll_driver->idle(hdev)
 
-        // add the sysfs files here
-        // all the sensor readings
-        // maybe also the fan speed controller
-        // potentially the rgb light controller
+
+
 
         printk(KERN_INFO "[*] Attempting to fetch model number");
 
         __u8 buf[MAX_REPORT_SIZE] = { 0xfe, 0x31 };
 
-        ret = tt_dpsg_recv(ldev, buf);
+        ret = tt_dpsg_send(ldev, buf);
         if (ret)
                 return ret;
+
+                // add the sysfs files here
+        // all the sensor readings
+        // maybe also the fan speed controller
+        // potentially the rgb light controller
 
 
         //hid_info(hdev, "%s initialized\n", <the the model number>);
