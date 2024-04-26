@@ -86,7 +86,16 @@ static int tt_dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id
 
 
         //hid_info(hdev, "%s initialized\n", <the the model number>);
-        printk(KERN_INFO "[*] Thermaltake %.*s (%04X:%04X) p32&$lugged\n", MAX_REPORT_SIZE, buf, id->vendor, id->product);
+        // printk(KERN_INFO "[*] Thermaltake %.*s (%04X:%04X) p32&$lugged\n", MAX_REPORT_SIZE, buf, id->vendor, id->product);
+        printk(KERN_INFO "[*] Thermaltake (%04X:%04X) p32&$lugged\n", id->vendor, id->product);
+
+        return 0;
+}
+
+static int tt_dpsg_raw_event(struct hid_device *hid, struct hid_report *report,
+	 u8 *data, int size)
+{
+        printk(KERN_INFO "[*] tt_dpsg Raw event, report id: %d\n", report->id);
         return 0;
 }
 
@@ -110,6 +119,7 @@ static struct hid_driver tt_dpsg_driver =
         .id_table = tt_dpsg_table,
         .probe = tt_dpsg_probe,    // called to create the sysfs files
         .remove = tt_dpsg_remove,  // called to remove the sysfs files (if nessesary idk yet)
+        .raw_event = tt_dpsg_raw_event,
 };
 
 module_hid_driver(tt_dpsg_driver);
