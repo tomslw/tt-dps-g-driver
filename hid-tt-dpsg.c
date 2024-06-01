@@ -3,17 +3,69 @@
 #include <linux/hidraw.h>
 #include <linux/mutex.h>
 #include <linux/hwmon.h>
+#include <linux/math64.h>
 
 // Heavily inspired by: gigabyte_waterforce.c
 
 #define MAX_REPORT_SIZE		64
 #define MAX_MODEL_SIZE          63 // 62 bytes + '\0'
 
-#define STATUS_VALIDITY		(2 * 1000)      // ms
+#define REQUEST_TIMEOUT		(2 * 1000)      // ms
 
 
-#define REQUEST_SENS_REPORT_ID       0x31
-#define REQUEST_MODEL_REPORT_ID      0xfe
+#define REQUEST_SENS_REPORT_ID          0x31
+#define REQUEST_MODEL_REPORT_ID         0xfe
+
+#define SENSOR_ID_12V                   0x34
+#define SENSOR_ID_5V                    0x35
+#define SENSOR_ID_33V                   0x36
+#define SENSOR_ID_12I                   0x37
+#define SENSOR_ID_5I                    0x38
+#define SENSOR_ID_33I                   0x39
+#define SENSOR_ID_TEMP                  0x3a
+#define SENSOR_ID_FAN                   0x3b
+
+static const u8 *const dpsg_voltage_sens_id[] = {
+	SENSOR_ID_12V,
+        SENSOR_ID_5V,
+        SENSOR_ID_33V
+};
+
+static const u8 *const dpsg_current_sens_id[] = {
+	SENSOR_ID_12I,
+        SENSOR_ID_5I,
+        SENSOR_ID_33I
+};
+
+static const u8 *const dpsg_temp_sens_id[] = {
+	SENSOR_ID_TEMP
+};
+
+static const u8 *const dpsg_fan_sens_id[] = {
+	SENSOR_ID_FAN
+};
+
+static const char *const dpsg_voltage_label[] = {
+	"12V rail Voltage",
+        "5V rail Voltage",
+        "3.3V rail Voltage"
+};
+
+static const char *const dpsg_currant_label[] = {
+	"12V rail Currant",
+        "5V rail Currant",
+        "3.3V rail Currant"
+};
+
+static const char *const dpsg_temp_label[] = {
+	"PSU Temperature"
+};
+
+static const char *const dpsg_fan_label[] = {
+	"Fan RPM",
+};
+
+
 
 struct dpsg_device {
 	struct hid_device *hdev;
@@ -36,20 +88,6 @@ struct dpsg_device {
 
 	u8 *buf;
         unsigned long updated; // do we NEED jiffies?
-};
-
-static const char *const dpsg_rail_label[] = {
-	"12V",
-        "5V",
-        "3.3V"
-};
-
-static const char *const dpsg_temp_label[] = {
-	"PSU Temp"
-};
-
-static const char *const dpsg_fan_label[] = {
-	"Fan speed",
 };
 
 // works
@@ -84,7 +122,7 @@ static int dpsg_get_model(struct dpsg_device *ldev)
                 return ret;
 
 	ret = wait_for_completion_interruptible_timeout(&ldev->model_processed,
-							msecs_to_jiffies(STATUS_VALIDITY));
+							msecs_to_jiffies(REQUEST_TIMEOUT));
 	if (ret == 0) {
 		return -ETIMEDOUT;
         }
@@ -99,14 +137,37 @@ static int dpsg_get_sensor(struct dpsg_device *ldev, enum hwmon_sensor_types typ
 {
         int ret;
 
-        __u8 buf[MAX_REPORT_SIZE] = { 0xfe, 0x31 };
+        __u8 buf[MAX_REPORT_SIZE] = { REQUEST_SENS_REPORT_ID };
+
+	switch (type) {
+        case hwmon_in:
+                buf[1] = dpsg_voltage_sens_id[channel];
+                break;
+        case hwmon_curr:
+		buf[1] = dpsg_current_sens_id[channel];
+		break;
+	case hwmon_temp:
+		buf[1] = dpsg_temp_sens_id[channel];
+		break;
+	case hwmon_pwm:
+		buf[1] = dpsg_fan_sens_id[channel];
+		break;
+	default:
+                return -EINVAL;
+		break;
+	}
 
         ret = tt_dpsg_send(ldev, buf);
         if (ret < 0)
                 return ret;
 
-	ret = wait_for_completion_interruptible_timeout(&ldev->model_processed,
-							msecs_to_jiffies(STATUS_VALIDITY));
+	ret = wait_for_completion_interruptible_timeout(&ldev->sensor_report_received,
+							msecs_to_jiffies(REQUEST_TIMEOUT));
+
+        spin_lock_bh(&ldev->status_report_request_lock);
+	reinit_completion(&ldev->sensor_report_received);
+	spin_unlock_bh(&ldev->status_report_request_lock);
+
 	if (ret == 0) {
 		return -ETIMEDOUT;
         }
@@ -169,10 +230,10 @@ static int dpsg_read(struct device *dev, enum hwmon_sensor_types type,
 			   u32 attr, int channel, long *val)
 {
 	struct dpsg_device *ldev = dev_get_drvdata(dev);
-	// int ret = dpsg_get_status(ldev); // sends request for sensor data
+	int ret = dpsg_get_sensor(ldev, type, channel); // sends request for sensor data
 
-	// if (ret < 0)
-	// 	return ret;
+	if (ret < 0)
+		return ret;
 
 	switch (type) {
         case hwmon_in:
@@ -199,10 +260,10 @@ static int dpsg_read_string(struct device *dev, enum hwmon_sensor_types type,
 {
 	switch (type) {
         case hwmon_in:
-		*str = dpsg_rail_label[channel];
+		*str = dpsg_voltage_label[channel];
 		break;
         case hwmon_curr:
-		*str = dpsg_rail_label[channel];
+		*str = dpsg_currant_label[channel];
 		break;
 	case hwmon_temp:
 		*str = dpsg_temp_label[channel];
@@ -343,7 +404,57 @@ static int tt_dpsg_raw_event(struct hid_device *hdev, struct hid_report *report,
                 return 0;
         }
 
+        u16 manissa = ((u16)(data[3] & 0x0f) << 8) + data[2];
+        // cant POW in the kernel, the values were hard coded in the og source code anyway
+        // s8 exponent = (s8)((data[3] & 0x80) || ((data[3] & 0x70) >> 4)); 
+        u32 value;
 
+        if (data[0] == REQUEST_SENS_REPORT_ID) {
+                switch (data[1])
+                {
+                case SENSOR_ID_12V:
+                        value = (manissa * 1000) / 64;
+                        ldev->in_input[0] = value;
+                        break;
+                case SENSOR_ID_5V:
+                        value = (manissa * 1000) / 64;
+                        ldev->in_input[1] = (u32)(value * 1000);
+                        break;
+                case SENSOR_ID_33V:
+                        value = (manissa * 1000) / 64;
+                        ldev->in_input[2] = (u32)(value * 1000);
+                        break;
+                case SENSOR_ID_12I:
+                        value = (manissa * 1000) / 4;
+                        ldev->curr_input[0] = (u32)(value * 1000);
+                        break;
+                case SENSOR_ID_5I:
+                        value = (manissa * 1000) / 16;
+                        ldev->curr_input[1] = (u32)(value * 1000);
+                        break;
+                case SENSOR_ID_33I:
+                        value = (manissa * 1000) / 16;
+                        ldev->curr_input[2] = (u32)(value * 1000);
+                        break;
+                case SENSOR_ID_TEMP:
+                        value = (manissa * 1000) / 4;
+                        ldev->temp_input[0] = (u32)(value * 1000);
+                        break;
+                case SENSOR_ID_FAN:
+                        value = (manissa * 1000) * 4;
+                        ldev->fan_input[0] = (u32)(value * 1000);
+                        break;
+                default:
+                        break;
+                }
+        }
+
+        printk(KERN_INFO "[*] Value: %d\n", value);
+
+        spin_lock_bh(&ldev->status_report_request_lock);
+        if (!completion_done(&ldev->sensor_report_received))
+		complete_all(&ldev->sensor_report_received);
+	spin_unlock_bh(&ldev->status_report_request_lock);
 
         // lock and completion here
 
