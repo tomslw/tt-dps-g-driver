@@ -84,7 +84,7 @@ struct dpsg_device {
         s32 curr_input[3];
 	s32 temp_input[1];
 	u16 fan_input[1];
-        char model[MAX_MODEL_SIZE]; // theoretical max 
+        char model[MAX_MODEL_SIZE];
 
 	u8 *buf;
         unsigned long updated; // do we NEED jiffies?
@@ -97,10 +97,6 @@ static int tt_dpsg_send(struct dpsg_device *ldev, __u8 *buf)
 
         mutex_lock(&ldev->buffer_lock);
 
-        /*
-	 * buffer provided to hid_hw_raw_request must not be on the stack
-	 * and must not be part of a data structure
-	 */
         memcpy(ldev->buf, buf, MAX_REPORT_SIZE);
 
         ret = hid_hw_output_report(ldev->hdev, ldev->buf, MAX_REPORT_SIZE);
@@ -357,8 +353,8 @@ static int tt_dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id
         if (ret < 0)
                 goto fail_and_close;
 
-
-        // char *sanitized_model = hwmon_sanitize_name(&ldev->model);
+        const char *test = ldev->model;
+        char *sanitized_model = hwmon_sanitize_name(test);
         ldev->hwmon_dev = hwmon_device_register_with_info(&hdev->dev, "TT_DPS_G",
 							  ldev, &dpsg_chip_info, NULL);
 
@@ -380,9 +376,6 @@ fail_and_stop:
 	return ret;
 }
 
-// This is where all of the response managemant will happen
-// might need to have some sort of memory for each sensor, so that the sysfs files
-// have something to read
 static int tt_dpsg_raw_event(struct hid_device *hdev, struct hid_report *report,
 	 u8 *data, int size)
 {
@@ -418,31 +411,31 @@ static int tt_dpsg_raw_event(struct hid_device *hdev, struct hid_report *report,
                         break;
                 case SENSOR_ID_5V:
                         value = (manissa * 1000) / 64;
-                        ldev->in_input[1] = (u32)(value * 1000);
+                        ldev->in_input[1] = value;
                         break;
                 case SENSOR_ID_33V:
                         value = (manissa * 1000) / 64;
-                        ldev->in_input[2] = (u32)(value * 1000);
+                        ldev->in_input[2] = value;
                         break;
                 case SENSOR_ID_12I:
                         value = (manissa * 1000) / 4;
-                        ldev->curr_input[0] = (u32)(value * 1000);
+                        ldev->curr_input[0] = value;
                         break;
                 case SENSOR_ID_5I:
                         value = (manissa * 1000) / 16;
-                        ldev->curr_input[1] = (u32)(value * 1000);
+                        ldev->curr_input[1] = value;
                         break;
                 case SENSOR_ID_33I:
                         value = (manissa * 1000) / 16;
-                        ldev->curr_input[2] = (u32)(value * 1000);
+                        ldev->curr_input[2] = value;
                         break;
                 case SENSOR_ID_TEMP:
                         value = (manissa * 1000) / 4;
-                        ldev->temp_input[0] = (u32)(value * 1000);
+                        ldev->temp_input[0] = value;
                         break;
                 case SENSOR_ID_FAN:
                         value = (manissa * 1000) * 4;
-                        ldev->fan_input[0] = (u32)(value * 1000);
+                        ldev->fan_input[0] = value;
                         break;
                 default:
                         break;
@@ -467,9 +460,7 @@ static void tt_dpsg_remove(struct hid_device *hdev)
         hwmon_device_unregister(ldev->hwmon_dev);
 
         hid_hw_close(hdev);
-        hid_hw_stop(hdev); // how nessesary?
-
-        printk(KERN_INFO "[*] Thermaltake DPS G PSU removed\n");
+        hid_hw_stop(hdev);
 }
 
 static struct hid_device_id tt_dpsg_table[] = {
