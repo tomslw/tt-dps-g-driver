@@ -70,16 +70,13 @@ static const char *const dpsg_fan_label[] = {
 struct dpsg_device {
 	struct hid_device *hdev;
 	struct device *hwmon_dev;
-	/* For locking access to buffer */
-	struct mutex buffer_lock;
-	/* For queueing multiple readers */
-	struct mutex status_report_request_mutex;
-	/* For reinitializing the completion below */
+
+	struct mutex buf_lock;
+	struct mutex sensor_request_mutex;
 	spinlock_t status_report_request_lock;
 	struct completion sensor_report_received;
 	struct completion model_processed;
 
-	/* Sensor data */
         s32 in_input[3];
         s32 curr_input[3];
 	s32 temp_input[1];
@@ -87,7 +84,6 @@ struct dpsg_device {
         char model[MAX_MODEL_SIZE];
 
 	u8 *buf;
-        unsigned long updated; // do we NEED jiffies?
 };
 
 // works
@@ -95,13 +91,13 @@ static int tt_dpsg_send(struct dpsg_device *ldev, __u8 *buf)
 {
         int ret;
 
-        mutex_lock(&ldev->buffer_lock);
+        mutex_lock(&ldev->buf_lock);
 
         memcpy(ldev->buf, buf, MAX_REPORT_SIZE);
 
         ret = hid_hw_output_report(ldev->hdev, ldev->buf, MAX_REPORT_SIZE);
 
-        mutex_unlock(&ldev->buffer_lock);
+        mutex_unlock(&ldev->buf_lock);
                                         // meaning "Message too long", gotta look into if thats the case
         return ret == MAX_REPORT_SIZE ? 0 : -EMSGSIZE;
 }
@@ -331,18 +327,18 @@ static int tt_dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id
 		return ret;
 
         // taken straight from hidraw.c hidraw_open() 
-        ret = hid_hw_power(hdev, PM_HINT_FULLON);
-        if (ret < 0)
-                goto fail_and_stop;
+        // ret = hid_hw_power(hdev, PM_HINT_FULLON);
+        // if (ret < 0)
+        //         goto fail_and_stop;
 
         ret = hid_hw_open(hdev);
-        if (ret < 0) {
-                hid_hw_power(hdev, PM_HINT_NORMAL);
-                goto fail_and_stop;
-        }
+        // if (ret < 0) {
+        //         hid_hw_power(hdev, PM_HINT_NORMAL);
+        //         goto fail_and_stop;
+        // }
 
-	mutex_init(&ldev->status_report_request_mutex);
-	mutex_init(&ldev->buffer_lock);
+	mutex_init(&ldev->sensor_request_mutex);
+	mutex_init(&ldev->buf_lock);
 	spin_lock_init(&ldev->status_report_request_lock);
 	init_completion(&ldev->sensor_report_received);
 	init_completion(&ldev->model_processed);
@@ -353,8 +349,8 @@ static int tt_dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id
         if (ret < 0)
                 goto fail_and_close;
 
-        const char *test = ldev->model;
-        char *sanitized_model = hwmon_sanitize_name(test);
+        // const char *test = ldev->model;
+        // char *sanitized_model = hwmon_sanitize_name(test);
         ldev->hwmon_dev = hwmon_device_register_with_info(&hdev->dev, "TT_DPS_G",
 							  ldev, &dpsg_chip_info, NULL);
 
@@ -464,16 +460,15 @@ static void tt_dpsg_remove(struct hid_device *hdev)
 }
 
 static struct hid_device_id tt_dpsg_table[] = {
-                                        // vendor id, product id
         { HID_USB_DEVICE(0x264a, 0x2329) },
-        {} /* Terminating entry */
+        {}
 };
 
 MODULE_DEVICE_TABLE (hid, tt_dpsg_table); // what does this do?
 
 static struct hid_driver tt_dpsg_driver = 
 {
-        .name = "hid-tt-dpsg",
+        .name = "hid_tt_dpsg",
         .id_table = tt_dpsg_table,
         .probe = tt_dpsg_probe,    // called to create the sysfs files
         .remove = tt_dpsg_remove,  // called to remove the sysfs files (if nessesary idk yet)
