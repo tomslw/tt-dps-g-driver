@@ -73,8 +73,9 @@ struct dpsg_device {
 
 	struct mutex buf_lock;
 	struct mutex sensor_request_mutex;
-	spinlock_t status_report_request_lock;
-	struct completion sensor_report_received;
+	spinlock_t sensor_values_request_lock;
+	struct completion sensor_values_received;
+
 	struct completion model_processed;
 
         s32 in_input[3];
@@ -148,18 +149,18 @@ static int dpsg_get_sensor(struct dpsg_device *ldev, enum hwmon_sensor_types typ
                 return -EINVAL;
 		break;
 	}
-
+        mutex_lock_interruptible(&ldev->sensor_request_mutex);
         ret = tt_dpsg_send(ldev, buf);
         if (ret < 0)
                 return ret;
 
-	ret = wait_for_completion_interruptible_timeout(&ldev->sensor_report_received,
+        spin_lock_bh(&ldev->sensor_values_request_lock);
+	reinit_completion(&ldev->sensor_values_received);
+	spin_unlock_bh(&ldev->sensor_values_request_lock);
+
+	ret = wait_for_completion_interruptible_timeout(&ldev->sensor_values_received,
 							msecs_to_jiffies(REQUEST_TIMEOUT));
-
-        spin_lock_bh(&ldev->status_report_request_lock);
-	reinit_completion(&ldev->sensor_report_received);
-	spin_unlock_bh(&ldev->status_report_request_lock);
-
+        mutex_unlock(&ldev->sensor_request_mutex);
 	if (ret == 0) {
 		return -ETIMEDOUT;
         }
@@ -339,15 +340,17 @@ static int tt_dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id
 
 	mutex_init(&ldev->sensor_request_mutex);
 	mutex_init(&ldev->buf_lock);
-	spin_lock_init(&ldev->status_report_request_lock);
-	init_completion(&ldev->sensor_report_received);
-	init_completion(&ldev->model_processed);
+	spin_lock_init(&ldev->sensor_values_request_lock);
+	init_completion(&ldev->sensor_values_received);
 
-        hid_device_io_start(hdev); // allows raw_event to be called while in probe
+        // My current kernel version doesnt support the hwmon_sanitize_name() function
+	// init_completion(&ldev->model_processed);
 
-        ret = dpsg_get_model(ldev);
-        if (ret < 0)
-                goto fail_and_close;
+        // hid_device_io_start(hdev); // allows raw_event to be called while in probe
+
+        // ret = dpsg_get_model(ldev);
+        // if (ret < 0)
+        //         goto fail_and_close;
 
         // const char *test = ldev->model;
         // char *sanitized_model = hwmon_sanitize_name(test);
@@ -375,9 +378,6 @@ fail_and_stop:
 static int tt_dpsg_raw_event(struct hid_device *hdev, struct hid_report *report,
 	 u8 *data, int size)
 {
-        printk(KERN_INFO "[*] Raw event: %.*s %d %d\n", size, data, data[0], data[1]);
-
-
         struct dpsg_device *ldev = hid_get_drvdata(hdev);
         int i;
 
@@ -393,12 +393,14 @@ static int tt_dpsg_raw_event(struct hid_device *hdev, struct hid_report *report,
                 return 0;
         }
 
-        u16 manissa = ((u16)(data[3] & 0x0f) << 8) + data[2];
+        u16 manissa;
         // cant POW in the kernel, the values were hard coded in the og source code anyway
         // s8 exponent = (s8)((data[3] & 0x80) || ((data[3] & 0x70) >> 4)); 
         u32 value;
 
         if (data[0] == REQUEST_SENS_REPORT_ID) {
+                manissa = ((u16)(data[3] & 0x0f) << 8) + data[2];
+
                 switch (data[1])
                 {
                 case SENSOR_ID_12V:
@@ -438,12 +440,10 @@ static int tt_dpsg_raw_event(struct hid_device *hdev, struct hid_report *report,
                 }
         }
 
-        printk(KERN_INFO "[*] Value: %d\n", value);
-
-        spin_lock_bh(&ldev->status_report_request_lock);
-        if (!completion_done(&ldev->sensor_report_received))
-		complete_all(&ldev->sensor_report_received);
-	spin_unlock_bh(&ldev->status_report_request_lock);
+        spin_lock_bh(&ldev->sensor_values_request_lock);
+        if (!completion_done(&ldev->sensor_values_received))
+		complete_all(&ldev->sensor_values_received);
+	spin_unlock_bh(&ldev->sensor_values_request_lock);
 
         // lock and completion here
 
