@@ -344,13 +344,13 @@ static int tt_dpsg_probe(struct hid_device *hdev, const struct hid_device_id *id
 	init_completion(&ldev->sensor_values_received);
 
         // My current kernel version doesnt support the hwmon_sanitize_name() function
-	// init_completion(&ldev->model_processed);
+	init_completion(&ldev->model_processed);
 
-        // hid_device_io_start(hdev); // allows raw_event to be called while in probe
+        hid_device_io_start(hdev); // allows raw_event to be called while in probe
 
-        // ret = dpsg_get_model(ldev);
-        // if (ret < 0)
-        //         goto fail_and_close;
+        ret = dpsg_get_model(ldev);
+        if (ret < 0)
+                goto fail_and_close;
 
         // const char *test = ldev->model;
         // char *sanitized_model = hwmon_sanitize_name(test);
